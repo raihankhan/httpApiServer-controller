@@ -1,4 +1,4 @@
-Custom Resource : apiserver
+Custom Resource : Apiserver
 
 ApiGroup : raihankhan.github.io
 

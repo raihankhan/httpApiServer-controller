@@ -28,7 +28,7 @@ import (
 	listers "github.com/raihankhan/httpApiServer-controller/pkg/client/listers/raihankhan.github.io/v1alpha1"
 )
 
-const controllerAgentName = "sample-controller"
+const controllerAgentName = "httpApiServer-controller"
 
 const (
 	// SuccessSynced is used as part of the Event 'reason' when a Foo is synced
@@ -99,9 +99,9 @@ func NewController(
 	klog.Info("Setting up event handlers")
 	// Set up an event handler for when Foo resources change
 	apiServerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.enqueueFoo,
+		AddFunc: controller.enqueueApiServer,
 		UpdateFunc: func(old, new interface{}) {
-			controller.enqueueFoo(new)
+			controller.enqueueApiServer(new)
 		},
 	})
 	// Set up an event handler for when Deployment resources change. This
@@ -254,7 +254,7 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
-	// Get the deployment with the name specified in Foo.spec
+	// Get the deployment with the name specified in Apiserver.spec
 	deployment, err := c.deploymentsLister.Deployments(apiServer.Namespace).Get(deploymentName)
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
@@ -293,7 +293,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	// Finally, we update the status block of the Foo resource to reflect the
 	// current state of the world
-	err = c.updateFooStatus(apiServer, deployment)
+	err = c.updateServerStatus(apiServer, deployment)
 	if err != nil {
 		return err
 	}
@@ -302,24 +302,24 @@ func (c *Controller) syncHandler(key string) error {
 	return nil
 }
 
-func (c *Controller) updateFooStatus(foo *samplev1alpha1.Apiserver, deployment *appsv1.Deployment) error {
+func (c *Controller) updateServerStatus(server *samplev1alpha1.Apiserver, deployment *appsv1.Deployment) error {
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
-	fooCopy := foo.DeepCopy()
-	fooCopy.Status.AvailableReplicas = deployment.Status.AvailableReplicas
+	serverCopy := server.DeepCopy()
+	serverCopy.Status.AvailableReplicas = deployment.Status.AvailableReplicas
 	// If the CustomResourceSubresources feature gate is not enabled,
 	// we must use Update instead of UpdateStatus to update the Status block of the Foo resource.
 	// UpdateStatus will not allow changes to the Spec of the resource,
 	// which is ideal for ensuring nothing other than resource status has been updated.
-	_, err := c.sampleclientset.SamplecontrollerV1alpha1().Apiservers(foo.Namespace).Update(context.TODO(), fooCopy, metav1.UpdateOptions{})
+	_, err := c.sampleclientset.RaihankhanV1alpha1().Apiservers(server.Namespace).Update(context.TODO(), serverCopy, metav1.UpdateOptions{})
 	return err
 }
 
-// enqueueFoo takes a Foo resource and converts it into a namespace/name
+// enqueueApiserver takes a Foo resource and converts it into a namespace/name
 // string which is then put onto the work queue. This method should *not* be
 // passed resources of any type other than Foo.
-func (c *Controller) enqueueFoo(obj interface{}) {
+func (c *Controller) enqueueApiServer(obj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -354,7 +354,7 @@ func (c *Controller) handleObject(obj interface{}) {
 	if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
 		// If this object is not owned by a Foo, we should not do anything more
 		// with it.
-		if ownerRef.Kind != "Foo" {
+		if ownerRef.Kind != "Apiserver" {
 			return
 		}
 
@@ -364,7 +364,7 @@ func (c *Controller) handleObject(obj interface{}) {
 			return
 		}
 
-		c.enqueueFoo(foo)
+		c.enqueueApiServer(foo)
 		return
 	}
 }
@@ -374,7 +374,7 @@ func (c *Controller) handleObject(obj interface{}) {
 // the Foo resource that 'owns' it.
 func newDeployment(apiServer *samplev1alpha1.Apiserver) *appsv1.Deployment {
 	labels := map[string]string{
-		"app":        "nginx",
+		"app":        "apiserver",
 		"controller": apiServer.Name,
 	}
 	return &appsv1.Deployment{
@@ -382,7 +382,7 @@ func newDeployment(apiServer *samplev1alpha1.Apiserver) *appsv1.Deployment {
 			Name:      apiServer.Spec.DeploymentName,
 			Namespace: apiServer.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(apiServer, samplev1alpha1.SchemeGroupVersion.WithKind("apiserver")),
+				*metav1.NewControllerRef(apiServer, samplev1alpha1.SchemeGroupVersion.WithKind("Apiserver")),
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -398,7 +398,7 @@ func newDeployment(apiServer *samplev1alpha1.Apiserver) *appsv1.Deployment {
 					Containers: []corev1.Container{
 						{
 							Name:  "httpApiServer",
-							Image: "raihankhanraka/ecommerceapi:v1.1",
+							Image: "raihankhanraka/ecommerce-api:v1.1",
 						},
 					},
 				},
