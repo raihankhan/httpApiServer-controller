@@ -6,6 +6,9 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="ClusterID",type=string,JSONPath=`.status.klusterID`
+// +kubebuilder:printcolumn:name="Progress",type=string,JSONPath=`.status.progress`
 
 type Apiserver struct {
 	metav1.TypeMeta   `json:",inline"`

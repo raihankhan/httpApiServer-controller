@@ -1,4 +1,5 @@
 // +k8s:deepcopy-gen=package
-// +groupName=samplecontroller.k8s.io
+// +k8s:defaulter-gen=TypeMeta
+// +groupName=raihankhan.github.io
 
 package v1alpha1

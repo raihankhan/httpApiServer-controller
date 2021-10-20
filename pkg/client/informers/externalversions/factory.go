@@ -172,9 +172,9 @@ type SharedInformerFactory interface {
 	ForResource(resource schema.GroupVersionResource) (GenericInformer, error)
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
-	Samplecontroller() raihankhangithubio.Interface
+	Raihankhan() raihankhangithubio.Interface
 }
 
-func (f *sharedInformerFactory) Samplecontroller() raihankhangithubio.Interface {
+func (f *sharedInformerFactory) Raihankhan() raihankhangithubio.Interface {
 	return raihankhangithubio.New(f, f.namespace, f.tweakListOptions)
 }

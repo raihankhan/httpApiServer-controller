@@ -62,13 +62,13 @@ func NewFilteredApiserverInformer(client versioned.Interface, namespace string, 
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.SamplecontrollerV1alpha1().Apiservers(namespace).List(context.TODO(), options)
+				return client.RaihankhanV1alpha1().Apiservers(namespace).List(context.TODO(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.SamplecontrollerV1alpha1().Apiservers(namespace).Watch(context.TODO(), options)
+				return client.RaihankhanV1alpha1().Apiservers(namespace).Watch(context.TODO(), options)
 			},
 		},
 		&raihankhangithubiov1alpha1.Apiserver{},

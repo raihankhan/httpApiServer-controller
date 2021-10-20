@@ -20,8 +20,8 @@ package fake
 
 import (
 	clientset "github.com/raihankhan/httpApiServer-controller/pkg/client/clientset/versioned"
-	samplecontrollerv1alpha1 "github.com/raihankhan/httpApiServer-controller/pkg/client/clientset/versioned/typed/raihankhan.github.io/v1alpha1"
-	fakesamplecontrollerv1alpha1 "github.com/raihankhan/httpApiServer-controller/pkg/client/clientset/versioned/typed/raihankhan.github.io/v1alpha1/fake"
+	raihankhanv1alpha1 "github.com/raihankhan/httpApiServer-controller/pkg/client/clientset/versioned/typed/raihankhan.github.io/v1alpha1"
+	fakeraihankhanv1alpha1 "github.com/raihankhan/httpApiServer-controller/pkg/client/clientset/versioned/typed/raihankhan.github.io/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -79,7 +79,7 @@ var (
 	_ testing.FakeClient  = &Clientset{}
 )
 
-// SamplecontrollerV1alpha1 retrieves the SamplecontrollerV1alpha1Client
-func (c *Clientset) SamplecontrollerV1alpha1() samplecontrollerv1alpha1.SamplecontrollerV1alpha1Interface {
-	return &fakesamplecontrollerv1alpha1.FakeSamplecontrollerV1alpha1{Fake: &c.Fake}
+// RaihankhanV1alpha1 retrieves the RaihankhanV1alpha1Client
+func (c *Clientset) RaihankhanV1alpha1() raihankhanv1alpha1.RaihankhanV1alpha1Interface {
+	return &fakeraihankhanv1alpha1.FakeRaihankhanV1alpha1{Fake: &c.Fake}
 }

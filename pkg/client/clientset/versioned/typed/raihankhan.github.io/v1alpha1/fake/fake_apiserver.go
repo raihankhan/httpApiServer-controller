@@ -32,13 +32,13 @@ import (
 
 // FakeApiservers implements ApiserverInterface
 type FakeApiservers struct {
-	Fake *FakeSamplecontrollerV1alpha1
+	Fake *FakeRaihankhanV1alpha1
 	ns   string
 }
 
-var apiserversResource = schema.GroupVersionResource{Group: "samplecontroller.k8s.io", Version: "v1alpha1", Resource: "apiservers"}
+var apiserversResource = schema.GroupVersionResource{Group: "raihankhan.github.io", Version: "v1alpha1", Resource: "apiservers"}
 
-var apiserversKind = schema.GroupVersionKind{Group: "samplecontroller.k8s.io", Version: "v1alpha1", Kind: "Apiserver"}
+var apiserversKind = schema.GroupVersionKind{Group: "raihankhan.github.io", Version: "v1alpha1", Kind: "Apiserver"}
 
 // Get takes name of the apiserver, and returns the corresponding apiserver object, and an error if there is any.
 func (c *FakeApiservers) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.Apiserver, err error) {

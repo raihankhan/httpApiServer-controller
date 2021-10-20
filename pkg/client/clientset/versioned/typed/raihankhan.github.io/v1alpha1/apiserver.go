@@ -57,7 +57,7 @@ type apiservers struct {
 }
 
 // newApiservers returns a Apiservers
-func newApiservers(c *SamplecontrollerV1alpha1Client, namespace string) *apiservers {
+func newApiservers(c *RaihankhanV1alpha1Client, namespace string) *apiservers {
 	return &apiservers{
 		client: c.RESTClient(),
 		ns:     namespace,
