@@ -41,26 +41,31 @@ spec:
             type: object
           spec:
             properties:
-              deploymentName:
+              deployment_name:
+                type: string
+              node_port_name:
                 type: string
               replicas:
                 format: int32
                 type: integer
+              service_name:
+                type: string
             required:
-            - deploymentName
+            - deployment_name
+            - node_port_name
             - replicas
+            - service_name
             type: object
           status:
             properties:
-              availableReplicas:
+              available_replicas:
                 format: int32
                 type: integer
             required:
-            - availableReplicas
+            - available_replicas
             type: object
         required:
         - spec
-        - status
         type: object
     served: true
     storage: true

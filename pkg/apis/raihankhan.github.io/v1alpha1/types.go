@@ -15,16 +15,18 @@ type Apiserver struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   ApiserverSpec   `json:"spec"`
-	Status ApiserverStatus `json:"status"`
+	Status ApiserverStatus `json:"status,omitempty"`
 }
 
 type ApiserverSpec struct {
-	DeploymentName string `json:"deploymentName"`
+	DeploymentName string `json:"deployment_name"`
+	ServiceName    string `json:"service_name"`
+	NodePortName   string `json:"node_port_name"`
 	Replicas       *int32 `json:"replicas"`
 }
 
 type ApiserverStatus struct {
-	AvailableReplicas int32 `json:"availableReplicas"`
+	AvailableReplicas int32 `json:"available_replicas"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

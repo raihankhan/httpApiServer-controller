@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -12,10 +13,12 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
+	corev1informer "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	appslisters "k8s.io/client-go/listers/apps/v1"
+	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -45,7 +48,7 @@ const (
 	MessageResourceSynced = "Foo synced successfully"
 )
 
-// Controller is the controller implementation for Foo resources
+// Controller is the controller implementation for Apiserver resources
 type Controller struct {
 	// kubeclientset is a standard kubernetes clientset
 	kubeclientset kubernetes.Interface
@@ -56,7 +59,8 @@ type Controller struct {
 	deploymentsSynced cache.InformerSynced
 	apiServerLister   listers.ApiserverLister
 	apiServersSynced  cache.InformerSynced
-
+	serviceLister     corev1lister.ServiceLister
+	serviceSynced     cache.InformerSynced
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
 	// means we can ensure we only process a fixed amount of resources at a
@@ -73,11 +77,12 @@ func NewController(
 	kubeclientset kubernetes.Interface,
 	sampleclientset clientset.Interface,
 	deploymentInformer appsinformers.DeploymentInformer,
+	serviceInformer corev1informer.ServiceInformer,
 	apiServerInformer informers.ApiserverInformer) *Controller {
 
 	// Create event broadcaster
-	// Add sample-controller types to the default Kubernetes Scheme so Events can be
-	// logged for sample-controller types.
+	// Add Apiserver types to the default Kubernetes Scheme so Events can be
+	// logged for Apiserver types.
 	utilruntime.Must(samplescheme.AddToScheme(scheme.Scheme))
 	klog.V(4).Info("Creating event broadcaster")
 	eventBroadcaster := record.NewBroadcaster()
@@ -92,6 +97,8 @@ func NewController(
 		deploymentsSynced: deploymentInformer.Informer().HasSynced,
 		apiServerLister:   apiServerInformer.Lister(),
 		apiServersSynced:  apiServerInformer.Informer().HasSynced,
+		serviceSynced:     serviceInformer.Informer().HasSynced,
+		serviceLister:     serviceInformer.Lister(),
 		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "apiservers"),
 		recorder:          recorder,
 	}
@@ -106,7 +113,7 @@ func NewController(
 	})
 	// Set up an event handler for when Deployment resources change. This
 	// handler will lookup the owner of the given Deployment, and if it is
-	// owned by a Foo resource then the handler will enqueue that Foo resource for
+	// owned by a Apiserver resource then the handler will enqueue that resource for
 	// processing. This way, we don't need to implement custom logic for
 	// handling Deployment resources. More info on this pattern:
 	// https://github.com/kubernetes/community/blob/8cafef897a22026d42f5e5bb3f104febe7e29830/contributors/devel/controllers.md
@@ -245,7 +252,10 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
-	deploymentName := apiServer.Spec.DeploymentName
+	//deployment
+	//
+	//
+	deploymentName := apiServer.Spec.DeploymentName + "-depl"
 	if deploymentName == "" {
 		// We choose to absorb the error here as the worker would requeue the
 		// resource otherwise. Instead, the next time the resource is updated
@@ -261,6 +271,48 @@ func (c *Controller) syncHandler(key string) error {
 		deployment, err = c.kubeclientset.AppsV1().Deployments(apiServer.Namespace).Create(context.TODO(), newDeployment(apiServer), metav1.CreateOptions{})
 	}
 
+	//Service
+	//
+	//
+	serviceName := apiServer.Spec.ServiceName + "-svc"
+	if serviceName == "" {
+		// We choose to absorb the error here as the worker would requeue the
+		// resource otherwise. Instead, the next time the resource is updated
+		// the resource will be queued again.
+		utilruntime.HandleError(fmt.Errorf("%s: service name must be specified", key))
+		return nil
+	}
+
+	// Get the deployment with the name specified in Apiserver.spec
+	svc, err := c.serviceLister.Services(apiServer.Namespace).Get(serviceName)
+	// If the resource doesn't exist, we'll create it
+	if errors.IsNotFound(err) {
+		svc, err = c.kubeclientset.CoreV1().Services(apiServer.Namespace).Create(context.TODO(), newService(apiServer), metav1.CreateOptions{})
+	}
+
+	fmt.Println(svc.Name)
+
+	//NodePort
+	//
+	//
+	NodePortName := apiServer.Spec.NodePortName + "-np"
+	if serviceName == "" {
+		// We choose to absorb the error here as the worker would requeue the
+		// resource otherwise. Instead, the next time the resource is updated
+		// the resource will be queued again.
+		utilruntime.HandleError(fmt.Errorf("%s: NodePortName name must be specified", key))
+		return nil
+	}
+
+	// Get the deployment with the name specified in Apiserver.spec
+	np, err := c.serviceLister.Services(apiServer.Namespace).Get(NodePortName)
+	// If the resource doesn't exist, we'll create it
+	if errors.IsNotFound(err) {
+		np, err = c.kubeclientset.CoreV1().Services(apiServer.Namespace).Create(context.TODO(), newNodePort(apiServer), metav1.CreateOptions{})
+	}
+
+	fmt.Println(np.Name)
+
 	// If an error occurs during Get/Create, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
 	// temporary network failure, or any other transient reason.
@@ -268,7 +320,7 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
-	// If the Deployment is not controlled by this Foo resource, we should log
+	// If the Deployment is not controlled by this apiServer resource, we should log
 	// a warning to the event recorder and return error msg.
 	if !metav1.IsControlledBy(deployment, apiServer) {
 		msg := fmt.Sprintf(MessageResourceExists, deployment.Name)
@@ -276,7 +328,7 @@ func (c *Controller) syncHandler(key string) error {
 		return fmt.Errorf("%s", msg)
 	}
 
-	// If this number of the replicas on the Foo resource is specified, and the
+	// If this number of the replicas on the apiServer resource is specified, and the
 	// number does not equal the current desired replicas on the Deployment, we
 	// should update the Deployment resource.
 	if apiServer.Spec.Replicas != nil && *apiServer.Spec.Replicas != *deployment.Spec.Replicas {
@@ -358,25 +410,32 @@ func (c *Controller) handleObject(obj interface{}) {
 			return
 		}
 
-		foo, err := c.apiServerLister.Apiservers(object.GetNamespace()).Get(ownerRef.Name)
+		apiserver, err := c.apiServerLister.Apiservers(object.GetNamespace()).Get(ownerRef.Name)
 		if err != nil {
-			klog.V(4).Infof("ignoring orphaned object '%s' of foo '%s'", object.GetSelfLink(), ownerRef.Name)
+			klog.V(4).Infof("ignoring orphaned object '%s' of apiserver '%s'", object.GetSelfLink(), ownerRef.Name)
 			return
 		}
 
-		c.enqueueApiServer(foo)
+		c.enqueueApiServer(apiserver)
 		return
 	}
 }
 
-// newDeployment creates a new Deployment for a Foo resource. It also sets
+// newDeployment creates a new Deployment for a Apiserver resource. It also sets
 // the appropriate OwnerReferences on the resource so handleObject can discover
-// the Foo resource that 'owns' it.
+// the ApiServer resource that 'owns' it.
 func newDeployment(apiServer *samplev1alpha1.Apiserver) *appsv1.Deployment {
 	labels := map[string]string{
 		"app":        "apiserver",
 		"controller": apiServer.Name,
 	}
+
+	port1 := corev1.ContainerPort{
+		Name:          "http",
+		Protocol:      corev1.ProtocolTCP,
+		ContainerPort: 8080,
+	}
+
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      apiServer.Spec.DeploymentName,
@@ -399,9 +458,78 @@ func newDeployment(apiServer *samplev1alpha1.Apiserver) *appsv1.Deployment {
 						{
 							Name:  "httpApiServer",
 							Image: "raihankhanraka/ecommerce-api:v1.1",
+							Ports: []corev1.ContainerPort{
+								port1,
+							},
 						},
 					},
 				},
+			},
+		},
+	}
+}
+
+// newService creates a new Deployment for a Apiserver resource. It also sets
+// the appropriate OwnerReferences on the resource so handleObject can discover
+// the ApiServer resource that 'owns' it.
+func newService(apiServer *samplev1alpha1.Apiserver) *corev1.Service {
+	selectors := map[string]string{
+		"app":        "apiserver",
+		"controller": apiServer.Name,
+	}
+
+	port1 := corev1.ServicePort{
+		Protocol:   corev1.ProtocolTCP,
+		TargetPort: intstr.IntOrString{IntVal: 8080},
+		Port:       8080,
+	}
+
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      apiServer.Spec.ServiceName,
+			Namespace: apiServer.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(apiServer, samplev1alpha1.SchemeGroupVersion.WithKind("Apiserver")),
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				port1,
+			},
+			Selector: selectors,
+		},
+	}
+}
+
+// newNodePort creates a new Deployment for a Apiserver resource. It also sets
+// the appropriate OwnerReferences on the resource so handleObject can discover
+// the ApiServer resource that 'owns' it.
+func newNodePort(apiServer *samplev1alpha1.Apiserver) *corev1.Service {
+	selectors := map[string]string{
+		"app":        "apiserver",
+		"controller": apiServer.Name,
+	}
+
+	port1 := corev1.ServicePort{
+		Protocol:   corev1.ProtocolTCP,
+		NodePort:   30184,
+		TargetPort: intstr.IntOrString{IntVal: 8080},
+		Port:       8080,
+	}
+
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      apiServer.Spec.NodePortName,
+			Namespace: apiServer.Namespace,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(apiServer, samplev1alpha1.SchemeGroupVersion.WithKind("Apiserver")),
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: selectors,
+			Type:     "NodePort",
+			Ports: []corev1.ServicePort{
+				port1,
 			},
 		},
 	}
