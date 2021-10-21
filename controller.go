@@ -42,10 +42,10 @@ const (
 
 	// MessageResourceExists is the message used for Events when a resource
 	// fails to sync due to a Deployment already existing
-	MessageResourceExists = "Resource %q already exists and is not managed by Foo"
+	MessageResourceExists = "Resource %q already exists and is not managed by ApiServer"
 	// MessageResourceSynced is the message used for an Event fired when a Foo
 	// is synced successfully
-	MessageResourceSynced = "Foo synced successfully"
+	MessageResourceSynced = "Apiserver synced successfully"
 )
 
 // Controller is the controller implementation for Apiserver resources
@@ -481,7 +481,7 @@ func newService(apiServer *samplev1alpha1.Apiserver) *corev1.Service {
 	port1 := corev1.ServicePort{
 		Protocol:   corev1.ProtocolTCP,
 		TargetPort: intstr.IntOrString{IntVal: 8080},
-		Port:       8080,
+		Port:       8081,
 	}
 
 	return &corev1.Service{
@@ -512,14 +512,13 @@ func newNodePort(apiServer *samplev1alpha1.Apiserver) *corev1.Service {
 
 	port1 := corev1.ServicePort{
 		Protocol:   corev1.ProtocolTCP,
-		NodePort:   30184,
-		TargetPort: intstr.IntOrString{IntVal: 8080},
-		Port:       8080,
+		TargetPort: intstr.IntOrString{IntVal: 8081},
+		Port:       8081,
 	}
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      apiServer.Spec.NodePortName,
+			Name:      apiServer.Spec.NodePortName + "-svc",
 			Namespace: apiServer.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(apiServer, samplev1alpha1.SchemeGroupVersion.WithKind("Apiserver")),
@@ -527,7 +526,7 @@ func newNodePort(apiServer *samplev1alpha1.Apiserver) *corev1.Service {
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: selectors,
-			Type:     "NodePort",
+			Type:     corev1.ServiceTypeNodePort,
 			Ports: []corev1.ServicePort{
 				port1,
 			},
