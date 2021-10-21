@@ -3,5 +3,7 @@ kind: Apiserver
 metadata:
   name: server-1
 spec:
-  deploymentName: test-server
+  deployment_name: test
+  node_port_name: nodeport
+  service_name: service
   replicas: 3
