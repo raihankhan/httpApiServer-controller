@@ -2,6 +2,9 @@ package main
 
 import (
 	"flag"
+	"k8s.io/client-go/rest"
+	"os"
+	"path/filepath"
 	"time"
 
 	kubeinformers "k8s.io/client-go/informers"
@@ -28,9 +31,15 @@ func main() {
 	// set up signals so we handle the first shutdown signal gracefully
 	stopCh := signals.SetupSignalHandler()
 
+	kubeconfig = filepath.Join(os.Getenv("HOME"), ".kube/config")
+
+
 	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 	if err != nil {
-		klog.Fatalf("Error building kubeconfig: %s", err.Error())
+		cfg, err = rest.InClusterConfig()
+		if err != nil {
+			klog.Fatalf("Error getting kubeconfig: %s", err.Error())
+		}
 	}
 
 	kubeClient, err := kubernetes.NewForConfig(cfg)

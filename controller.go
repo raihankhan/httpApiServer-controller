@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -15,18 +16,14 @@ import (
 	appsinformers "k8s.io/client-go/informers/apps/v1"
 	corev1informer "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
-	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	samplev1alpha1 "github.com/raihankhan/httpApiServer-controller/pkg/apis/raihankhan.github.io/v1alpha1"
 	clientset "github.com/raihankhan/httpApiServer-controller/pkg/client/clientset/versioned"
-	samplescheme "github.com/raihankhan/httpApiServer-controller/pkg/client/clientset/versioned/scheme"
 	informers "github.com/raihankhan/httpApiServer-controller/pkg/client/informers/externalversions/raihankhan.github.io/v1alpha1"
 	listers "github.com/raihankhan/httpApiServer-controller/pkg/client/listers/raihankhan.github.io/v1alpha1"
 )
@@ -61,15 +58,14 @@ type Controller struct {
 	apiServersSynced  cache.InformerSynced
 	serviceLister     corev1lister.ServiceLister
 	serviceSynced     cache.InformerSynced
+
+
 	// workqueue is a rate limited work queue. This is used to queue work to be
 	// processed instead of performing it as soon as a change happens. This
 	// means we can ensure we only process a fixed amount of resources at a
 	// time, and makes it easy to ensure we are never processing the same item
 	// simultaneously in two different workers.
 	workqueue workqueue.RateLimitingInterface
-	// recorder is an event recorder for recording Event resources to the
-	// Kubernetes API.
-	recorder record.EventRecorder
 }
 
 // NewController returns a new sample controller
@@ -80,16 +76,6 @@ func NewController(
 	serviceInformer corev1informer.ServiceInformer,
 	apiServerInformer informers.ApiserverInformer) *Controller {
 
-	// Create event broadcaster
-	// Add Apiserver types to the default Kubernetes Scheme so Events can be
-	// logged for Apiserver types.
-	utilruntime.Must(samplescheme.AddToScheme(scheme.Scheme))
-	klog.V(4).Info("Creating event broadcaster")
-	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartStructuredLogging(0)
-	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
-
 	controller := &Controller{
 		kubeclientset:     kubeclientset,
 		sampleclientset:   sampleclientset,
@@ -99,39 +85,19 @@ func NewController(
 		apiServersSynced:  apiServerInformer.Informer().HasSynced,
 		serviceSynced:     serviceInformer.Informer().HasSynced,
 		serviceLister:     serviceInformer.Lister(),
+
 		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "apiservers"),
-		recorder:          recorder,
 	}
 
 	klog.Info("Setting up event handlers")
 	// Set up an event handler for when Foo resources change
+
 	apiServerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueApiServer,
 		UpdateFunc: func(old, new interface{}) {
 			controller.enqueueApiServer(new)
 		},
 	})
-	// Set up an event handler for when Deployment resources change. This
-	// handler will lookup the owner of the given Deployment, and if it is
-	// owned by a Apiserver resource then the handler will enqueue that resource for
-	// processing. This way, we don't need to implement custom logic for
-	// handling Deployment resources. More info on this pattern:
-	// https://github.com/kubernetes/community/blob/8cafef897a22026d42f5e5bb3f104febe7e29830/contributors/devel/controllers.md
-	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: controller.handleObject,
-		UpdateFunc: func(old, new interface{}) {
-			newDepl := new.(*appsv1.Deployment)
-			oldDepl := old.(*appsv1.Deployment)
-			if newDepl.ResourceVersion == oldDepl.ResourceVersion {
-				// Periodic resync will send update events for all known Deployments.
-				// Two different versions of the same Deployment will always have different RVs.
-				return
-			}
-			controller.handleObject(new)
-		},
-		DeleteFunc: controller.handleObject,
-	})
-
 	return controller
 }
 
@@ -144,11 +110,11 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
 	defer c.workqueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
-	klog.Info("Starting Foo controller")
+	klog.Info("Starting Apiserver controller")
 
 	// Wait for the caches to be synced before starting workers
 	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.deploymentsSynced, c.apiServersSynced); !ok {
+	if ok := cache.WaitForCacheSync(stopCh, c.deploymentsSynced, c.serviceSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
@@ -165,68 +131,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
 	return nil
 }
 
-// runWorker is a long-running function that will continually call the
-// processNextWorkItem function in order to read and process a message on the
-// workqueue.
-func (c *Controller) runWorker() {
-	for c.processNextWorkItem() {
-	}
-}
 
-// processNextWorkItem will read a single work item off the workqueue and
-// attempt to process it, by calling the syncHandler.
-func (c *Controller) processNextWorkItem() bool {
-	obj, shutdown := c.workqueue.Get()
-
-	if shutdown {
-		return false
-	}
-
-	// We wrap this block in a func so we can defer c.workqueue.Done.
-	err := func(obj interface{}) error {
-		// We call Done here so the workqueue knows we have finished
-		// processing this item. We also must remember to call Forget if we
-		// do not want this work item being re-queued. For example, we do
-		// not call Forget if a transient error occurs, instead the item is
-		// put back on the workqueue and attempted again after a back-off
-		// period.
-		defer c.workqueue.Done(obj)
-		var key string
-		var ok bool
-		// We expect strings to come off the workqueue. These are of the
-		// form namespace/name. We do this as the delayed nature of the
-		// workqueue means the items in the informer cache may actually be
-		// more up to date that when the item was initially put onto the
-		// workqueue.
-		if key, ok = obj.(string); !ok {
-			// As the item in the workqueue is actually invalid, we call
-			// Forget here else we'd go into a loop of attempting to
-			// process a work item that is invalid.
-			c.workqueue.Forget(obj)
-			utilruntime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
-			return nil
-		}
-		// Run the syncHandler, passing it the namespace/name string of the
-		// Foo resource to be synced.
-		if err := c.syncHandler(key); err != nil {
-			// Put the item back on the workqueue to handle any transient errors.
-			c.workqueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		// Finally, if no error occurs we Forget this item so it does not
-		// get queued again until another change happens.
-		c.workqueue.Forget(obj)
-		klog.Infof("Successfully synced '%s'", key)
-		return nil
-	}(obj)
-
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-
-	return true
-}
 
 // syncHandler compares the actual state with the desired, and attempts to
 // converge the two. It then updates the Status block of the Foo resource
@@ -234,6 +139,7 @@ func (c *Controller) processNextWorkItem() bool {
 func (c *Controller) syncHandler(key string) error {
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
@@ -241,6 +147,7 @@ func (c *Controller) syncHandler(key string) error {
 
 	// Get the Apiserver resource with this namespace/name
 	apiServer, err := c.apiServerLister.Apiservers(namespace).Get(name)
+
 	if err != nil {
 		// The Apiserver resource may no longer exist, in which case we stop
 		// processing.
@@ -255,7 +162,7 @@ func (c *Controller) syncHandler(key string) error {
 	//deployment
 	//
 	//
-	deploymentName := apiServer.Spec.DeploymentName + "-depl"
+	deploymentName := apiServer.Spec.DeploymentName
 	if deploymentName == "" {
 		// We choose to absorb the error here as the worker would requeue the
 		// resource otherwise. Instead, the next time the resource is updated
@@ -264,12 +171,19 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
-	// Get the deployment with the name specified in Apiserver.spec
+	//Get the deployment with the name specified in Apiserver.spec
 	deployment, err := c.deploymentsLister.Deployments(apiServer.Namespace).Get(deploymentName)
-	// If the resource doesn't exist, we'll create it
-	if errors.IsNotFound(err) {
+	//fmt.Println(err.Error())
+	//If the resource doesn't exist, we'll create it
+	if err != nil && strings.Contains(err.Error(), "not found") {
+		fmt.Println(deploymentName)
+		//spew.Dump(apiServer.Spec)
 		deployment, err = c.kubeclientset.AppsV1().Deployments(apiServer.Namespace).Create(context.TODO(), newDeployment(apiServer), metav1.CreateOptions{})
+		fmt.Println(err.Error())
+		//
 	}
+	fmt.Println("came here")
+	fmt.Println(deployment.Name + "---")
 
 	//Service
 	//
@@ -320,29 +234,6 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
-	// If the Deployment is not controlled by this apiServer resource, we should log
-	// a warning to the event recorder and return error msg.
-	if !metav1.IsControlledBy(deployment, apiServer) {
-		msg := fmt.Sprintf(MessageResourceExists, deployment.Name)
-		c.recorder.Event(apiServer, corev1.EventTypeWarning, ErrResourceExists, msg)
-		return fmt.Errorf("%s", msg)
-	}
-
-	// If this number of the replicas on the apiServer resource is specified, and the
-	// number does not equal the current desired replicas on the Deployment, we
-	// should update the Deployment resource.
-	if apiServer.Spec.Replicas != nil && *apiServer.Spec.Replicas != *deployment.Spec.Replicas {
-		klog.V(4).Infof("Foo %s replicas: %d, deployment replicas: %d", name, *apiServer.Spec.Replicas, *deployment.Spec.Replicas)
-		deployment, err = c.kubeclientset.AppsV1().Deployments(apiServer.Namespace).Update(context.TODO(), newDeployment(apiServer), metav1.UpdateOptions{})
-	}
-
-	// If an error occurs during Update, we'll requeue the item so we can
-	// attempt processing again later. This could have been caused by a
-	// temporary network failure, or any other transient reason.
-	if err != nil {
-		return err
-	}
-
 	// Finally, we update the status block of the Foo resource to reflect the
 	// current state of the world
 	err = c.updateServerStatus(apiServer, deployment)
@@ -350,7 +241,6 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
-	c.recorder.Event(apiServer, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
 }
 
@@ -374,51 +264,12 @@ func (c *Controller) updateServerStatus(server *samplev1alpha1.Apiserver, deploy
 func (c *Controller) enqueueApiServer(obj interface{}) {
 	var key string
 	var err error
+	klog.Info("Enqueueing Apiservers. . . ")
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
 		utilruntime.HandleError(err)
 		return
 	}
-	c.workqueue.Add(key)
-}
-
-// handleObject will take any resource implementing metav1.Object and attempt
-// to find the Foo resource that 'owns' it. It does this by looking at the
-// objects metadata.ownerReferences field for an appropriate OwnerReference.
-// It then enqueues that Foo resource to be processed. If the object does not
-// have an appropriate OwnerReference, it will simply be skipped.
-func (c *Controller) handleObject(obj interface{}) {
-	var object metav1.Object
-	var ok bool
-	if object, ok = obj.(metav1.Object); !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("error decoding object, invalid type"))
-			return
-		}
-		object, ok = tombstone.Obj.(metav1.Object)
-		if !ok {
-			utilruntime.HandleError(fmt.Errorf("error decoding object tombstone, invalid type"))
-			return
-		}
-		klog.V(4).Infof("Recovered deleted object '%s' from tombstone", object.GetName())
-	}
-	klog.V(4).Infof("Processing object: %s", object.GetName())
-	if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
-		// If this object is not owned by a Foo, we should not do anything more
-		// with it.
-		if ownerRef.Kind != "Apiserver" {
-			return
-		}
-
-		apiserver, err := c.apiServerLister.Apiservers(object.GetNamespace()).Get(ownerRef.Name)
-		if err != nil {
-			klog.V(4).Infof("ignoring orphaned object '%s' of apiserver '%s'", object.GetSelfLink(), ownerRef.Name)
-			return
-		}
-
-		c.enqueueApiServer(apiserver)
-		return
-	}
+	c.workqueue.AddRateLimited(key)
 }
 
 // newDeployment creates a new Deployment for a Apiserver resource. It also sets
@@ -456,7 +307,7 @@ func newDeployment(apiServer *samplev1alpha1.Apiserver) *appsv1.Deployment {
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  "httpApiServer",
+							//Name:  "httpapiserver",
 							Image: "raihankhanraka/ecommerce-api:v1.1",
 							Ports: []corev1.ContainerPort{
 								port1,
