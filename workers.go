@@ -62,7 +62,9 @@ func (c *Controller) processNextWorkItem() bool {
 	}(obj)
 
 	if err != nil {
-		utilruntime.HandleError(err)
+		//if(err.Error()!=ErrResourceExists) {
+		//	utilruntime.HandleError(err)
+		//}
 		return true
 	}
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -175,20 +174,20 @@ func (c *Controller) syncHandler(key string) error {
 	deployment, err := c.deploymentsLister.Deployments(apiServer.Namespace).Get(deploymentName)
 	//fmt.Println(err.Error())
 	//If the resource doesn't exist, we'll create it
-	if err != nil && strings.Contains(err.Error(), "not found") {
-		fmt.Println(deploymentName)
+	if errors.IsNotFound(err){
+		//fmt.Println(deploymentName)
 		//spew.Dump(apiServer.Spec)
 		deployment, err = c.kubeclientset.AppsV1().Deployments(apiServer.Namespace).Create(context.TODO(), newDeployment(apiServer), metav1.CreateOptions{})
-		fmt.Println(err.Error())
+		fmt.Println("deployment " , deployment.Name , " created")
 		//
+	} else {
+		fmt.Println("deployment " ,  deployment.Name , " exists")
 	}
-	fmt.Println("came here")
-	fmt.Println(deployment.Name + "---")
 
 	//Service
 	//
 	//
-	serviceName := apiServer.Spec.ServiceName + "-svc"
+	serviceName := apiServer.Spec.ServiceName
 	if serviceName == "" {
 		// We choose to absorb the error here as the worker would requeue the
 		// resource otherwise. Instead, the next time the resource is updated
@@ -202,14 +201,15 @@ func (c *Controller) syncHandler(key string) error {
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
 		svc, err = c.kubeclientset.CoreV1().Services(apiServer.Namespace).Create(context.TODO(), newService(apiServer), metav1.CreateOptions{})
+		fmt.Println("service " , svc.Name ,   " created")
+	} else {
+		fmt.Println("service " , svc.Name , " exists")
 	}
-
-	fmt.Println(svc.Name)
 
 	//NodePort
 	//
 	//
-	NodePortName := apiServer.Spec.NodePortName + "-np"
+	NodePortName := apiServer.Spec.NodePortName
 	if serviceName == "" {
 		// We choose to absorb the error here as the worker would requeue the
 		// resource otherwise. Instead, the next time the resource is updated
@@ -223,9 +223,10 @@ func (c *Controller) syncHandler(key string) error {
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
 		np, err = c.kubeclientset.CoreV1().Services(apiServer.Namespace).Create(context.TODO(), newNodePort(apiServer), metav1.CreateOptions{})
+		fmt.Println("Nodeport " , np.Name ,   " created")
+	} else {
+		fmt.Println("Nopeport " , np.Name , " exists")
 	}
-
-	fmt.Println(np.Name)
 
 	// If an error occurs during Get/Create, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
